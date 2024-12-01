@@ -108,8 +108,8 @@ def calculate_box_speed_2():
             time.sleep(0.05)
         time_elapsed = current_time - start_time
         boxspeed = 3.7 / time_elapsed * 8.45
-        if not running:
-            boxspeed = 0
+    if not running:
+        boxspeed = 0
 
 def data_gatherer():
     timer2 = time.time()
