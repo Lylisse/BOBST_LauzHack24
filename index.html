@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telemetry Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background-color: #f4f7fc;
+            font-family: Arial, sans-serif;
+            margin: 100px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 60vh; /* Make sure the body takes up the whole viewport height */
+            flex-direction: column;
+            padding-bottom: 500px;
+        }
+
+        h1 {
+            margin-bottom: 40px; /* Add space between the header and the charts container */
+        }
+
+        .controls {
+            margin-bottom: 40px;
+        }
+
+        .controls input[type="text"] {
+            margin-right: 0px; /* Adds space between input and button */
+            margin-left: 10px;
+        }
+
+        .controls input[type="text"] {
+    padding: 10px;
+    border: 2px solid #ddd; /* Light gray border */
+    border-radius: 8px; /* Rounded corners */
+    font-size: 16px; /* Adjust font size */
+    width: 100%; /* Full width */
+    max-width: 180px; /* Set a max width to avoid stretching */
+    outline: none; /* Remove default focus outline */
+    transition: border-color 0.3s, box-shadow 0.3s; /* Smooth transition on focus */
+}
+
+.controls input[type="text"]:focus {
+    border-color: #4CAF50; /* Green border when focused */
+    box-shadow: 0 0 5px rgba(76, 175, 80, 0.5); /* Green glow effect on focus */
+}
+
+.controls input[type="text"]::placeholder {
+    color: #888; /* Lighter placeholder text color */
+    font-style: italic; /* Italicize the placeholder text */
+}
+
+        .controls button {
+            margin-right: 140px; /* Adds space between input and button */
+            margin-left: 10px;
+        }
+
+        .controls input[type="range"] {
+            background-color: #4CAF50;
+        }
+
+        /* Use CSS Grid for layout */
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr); /* Always two columns */
+            gap: 20px; /* Space between charts */
+            width: 100%; /* Allow the container to take up the available width */
+            max-width: 1100px; /* Limit maximum width of the container */
+            height: 100%; /* Let the charts fill 80% of the height */
+            max-height: 500px;
+            margin: 0 auto; /* Center the grid container */
+        }
+
+        canvas {
+            width: 400px; /* Make each canvas take up full width of the cell */
+            height: 200px; /* Set a fixed height for each chart */
+            max-width: 100%; /* Prevent stretching beyond the container */
+            margin-bottom: 20px;
+        }
+
+        #sliderValue {
+            font-weight: bold;
+            color: #4CAF50;
+            margin-left: 10px;
+        }
+
+        .machine-id-label {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: #f0f0f0;
+            color: #333;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+       .console {
+    position: fixed; /* Fixed position keeps it anchored */
+    bottom: 10px; /* Place it near the bottom of the viewport */
+    left: 10px; /* Align it to the left side */
+    width: calc(100% - 20px); /* Adjust to fit the viewport width minus padding */
+    max-height: 150px; /* Set a reasonable maximum height */
+    overflow-y: auto; /* Enable scrolling if content exceeds height */
+    background-color: rgba(230, 230, 230, 0.8); /* Slightly transparent background */
+    color: #1e1e1e; /* Text color */
+    padding: 10px; /* Padding for inner content */
+    border-radius: 5px; /* Rounded corners */
+    font-family: "Courier New", Courier, monospace; /* Console-style font */
+    font-size: 14px; /* Text size */
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); /* Subtle shadow for depth */
+    border: 1px solid #333; /* A border for clarity */
+    z-index: 1000; /* Ensure it stays above other elements */
+}
+
+#console-output {
+    display: flex;
+    flex-direction: column;
+    gap: 5px; /* Space between console messages */
+    word-wrap: break-word; /* Wrap long messages */
+}
+
+
+
+    </style>
+
+</head>
+<body>
+<h1>Telemetry Dashboard</h1>
+<div class="machine-id-label">
+        Machine Id: <span id="machine-id">lauzhack-pi11</span>
+</div>
+<div class="controls">
+    <label for="jobName">Job Name:</label>
+    <input type="text" id="jobName" placeholder="Enter job name"/>
+    <button id="startStopButton">Start Job</button>
+
+    <label for="speedSlider">Speed:</label>
+    <input type="range" id="speedSlider" min="0" max="100" step="1" value="100"/>
+    <span id="sliderValue">100</span>
+</div>
+<div class="charts-container">
+    <canvas id="machineSpeedChart"></canvas>
+    <canvas id="totalOutputChart"></canvas>
+    <canvas id="energyConsumptionChart"></canvas>
+    <canvas id="totalEnergyConsumptionChart"></canvas>
+</div>
+<div class="console">
+    <div id="console-output">
+        <!-- Messages will be appended here -->
+    </div>
+</div>
+
+<script>
+    // Initialize empty data arrays
+    const timeLabels = [];
+    const machineSpeedData = [];
+    const totalOutputData = [];
+    const energyConsumptionData = [];
+    const totalEnergyConsumptionData = [];
+
+    // Create machineSpeed chart
+    const machineSpeedCtx = document.getElementById('machineSpeedChart').getContext('2d');
+    const machineSpeedChart = new Chart(machineSpeedCtx, {
+        type: 'line',
+        data: {
+            labels: timeLabels,
+            datasets: [{
+                label: 'Machine Speed',
+                data: machineSpeedData,
+                borderColor: 'rgba(75, 192, 192, 1)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {title: {display: true, text: 'Time'}},
+                y: {title: {display: true, text: 'Machine Speed (boxes/minute)'}}
+            }
+        }
+    });
+
+    // Create totalOutput chart
+    const totalOutputCtx = document.getElementById('totalOutputChart').getContext('2d');
+    const totalOutputChart = new Chart(totalOutputCtx, {
+        type: 'line',
+        data: {
+            labels: timeLabels,
+            datasets: [{
+                label: 'Total Output Unit Count',
+                data: totalOutputData,
+                borderColor: 'rgba(153, 102, 255, 1)',
+                backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {title: {display: true, text: 'Time'}},
+                y: {title: {display: true, text: 'Total Output Unit Count'}}
+            }
+        }
+    });
+
+    const energyConsumptionCtx = document.getElementById('energyConsumptionChart').getContext('2d');
+    const energyConsumptionChart = new Chart(energyConsumptionCtx, {
+        type: 'line',
+        data: {
+            labels: timeLabels,
+            datasets: [{
+                label: 'Energy Consumption',
+                data: energyConsumptionData,
+                borderColor: 'rgba(226, 232, 26, 1)',
+                backgroundColor: 'rgba(226, 232, 26, 0.2)',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {title: {display: true, text: 'Time'}},
+                y: {title: {display: true, text: 'Energy Consumption (Wh)'}}
+            }
+        }
+    });
+
+    const totalEnergyConsumptionCtx = document.getElementById('totalEnergyConsumptionChart').getContext('2d');
+    const totalEnergyConsumptionChart = new Chart(totalEnergyConsumptionCtx, {
+        type: 'line',
+        data: {
+            labels: timeLabels,
+            datasets: [{
+                label: 'Total Energy Consumption',
+                data: totalEnergyConsumptionData,
+                borderColor: 'rgba(242, 154, 53, 1)',
+                backgroundColor: 'rgba(242, 154, 53, 0.2)',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: {title: {display: true, text: 'Time'}},
+                y: {title: {display: true, text: 'Total Energy Consumption (Wh)'}}
+            }
+        }
+    });
+
+    // Connect to the telemetry endpoint
+    const eventSource = new EventSource('/telemetry');
+    eventSource.onmessage = (event) => {
+        const telemetry = JSON.parse(event.data).telemetry;
+
+        // Update charts
+        const timestamp = new Date(telemetry.timestamp).toLocaleTimeString();
+        timeLabels.push(timestamp);
+        machineSpeedData.push(telemetry.machineSpeed);
+        totalOutputData.push(telemetry.totaloutputunitcount);
+        energyConsumptionData.push(telemetry.energyConsumption);
+        totalEnergyConsumptionData.push(telemetry.totalEnergyConsumption);
+
+        // Keep the graph at a fixed number of points (e.g., 10)
+        if (timeLabels.length > 10) {
+            timeLabels.shift();
+            machineSpeedData.shift();
+            totalOutputData.shift();
+            energyConsumptionData.shift();
+            totalEnergyConsumptionData.shift();
+        }
+
+        machineSpeedChart.update();
+        totalOutputChart.update();
+        energyConsumptionChart.update();
+        totalEnergyConsumptionChart.update();
+    };
+
+    document.getElementById('startStopButton').addEventListener('click', function () {
+    const jobNameInput = document.getElementById('jobName'); // Get the input field
+    const button = document.getElementById('startStopButton');
+
+    // Toggle button text and action based on its current state
+    if (button.innerText === "Start Job") {
+        button.innerText = "Stop Job";
+
+        // Disable and gray out the input box
+        jobNameInput.disabled = true;
+        jobNameInput.style.backgroundColor = "lightgray";
+
+        // Send job name and "job started" status to the backend
+        fetch('http://10.0.4.101:5000/job-status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'job started', jobName: jobNameInput.value, running: true })
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Job started:', data);
+                addConsoleMessage(`Job '${jobNameInput.value}' started.`);
+
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+
+    } else {
+        button.innerText = "Start Job";
+
+        jobName = jobNameInput.value
+        // Clear and re-enable the input box
+        jobNameInput.value = '';
+        jobNameInput.disabled = false;
+        jobNameInput.style.backgroundColor = ""; // Reset to default
+
+        // Send job name and "job stopped" status to the backend
+        fetch('http://10.0.4.101:5000/job-status', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ status: 'job stopped', jobName: jobName, running: false })
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Job stopped:', data);
+                addConsoleMessage(`Job '${jobName}' stopped.`);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+    }
+});
+
+
+
+    const slider = document.getElementById('speedSlider');
+    const sliderValueDisplay = document.getElementById('sliderValue');
+    const responseMessage = document.getElementById('responseMessage');
+
+    const sendSliderValue = async (value) => {
+        try {
+            const response = await fetch('/data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({slider_value: value})
+            });
+
+            const result = await response.json();
+            responseMessage.innerText = `Response: ${result.status}`;
+        } catch (error) {
+            responseMessage.innerText = `Error: ${error}`;
+        }
+    };
+
+    // Update slider value display in real-time
+    slider.addEventListener('input', (event) => {
+        sliderValueDisplay.innerText = event.target.value;
+    });
+
+    // Send the slider value only when the user releases the slider
+    slider.addEventListener('change', (event) => {
+        const value = event.target.value;
+        sendSliderValue(value); // Send the updated value to the backend
+    });
+
+    function addConsoleMessage(message) {
+        const consoleOutput = document.getElementById('console-output');
+
+        // Create a new div for the message
+        const messageDiv = document.createElement('div');
+        messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`; // Timestamp + Message
+
+        console.log(consoleOutput.children.length);
+        // Check if the number of messages exceeds 2
+        if (consoleOutput.children.length > -2) {
+            // Remove the oldest message
+            consoleOutput.removeChild(consoleOutput.firstChild);
+        }
+
+        // Append the new message to the console
+        consoleOutput.appendChild(messageDiv);
+
+        // Automatically scroll to the bottom of the console
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+
+
+</script>
+</body>
+</html>
